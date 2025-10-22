@@ -17,8 +17,11 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
       
-      - name: Set up Homebrew
-        uses: Homebrew/actions/setup-homebrew@main
+      - name: Set up Homebrew (Linux)
+        run: |
+          NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+          echo "/home/linuxbrew/.linuxbrew/bin" >> $GITHUB_PATH
+          eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
       
       - name: Update formula
         run: |
@@ -41,14 +44,14 @@ jobs:
           sed -i "s/version \".*\"/version \"${VERSION}\"/" "$FORMULA"
           
           # Update URLs
-          sed -i "s|nettracex-v[0-9.]*-darwin-arm64|nettracex-${TAG}-darwin-arm64|" "$FORMULA"
-          sed -i "s|nettracex-v[0-9.]*-darwin-amd64|nettracex-${TAG}-darwin-amd64|" "$FORMULA"
-          sed -i "s|nettracex-v[0-9.]*-linux-arm64|nettracex-${TAG}-linux-arm64|" "$FORMULA"
-          sed -i "s|nettracex-v[0-9.]*-linux-amd64|nettracex-${TAG}-linux-amd64|" "$FORMULA"
+          sed -i "s|nettracex-v[0-9.]*-darwin-arm64|nettracex-${TAG}-darwin-arm64|g" "$FORMULA"
+          sed -i "s|nettracex-v[0-9.]*-darwin-amd64|nettracex-${TAG}-darwin-amd64|g" "$FORMULA"
+          sed -i "s|nettracex-v[0-9.]*-linux-arm64|nettracex-${TAG}-linux-arm64|g" "$FORMULA"
+          sed -i "s|nettracex-v[0-9.]*-linux-amd64|nettracex-${TAG}-linux-amd64|g" "$FORMULA"
           
           # Update SHA256 values using awk for more precise replacement
           awk -v arm64="$DARWIN_ARM64_SHA" -v amd64="$DARWIN_AMD64_SHA" '
-            /on_macos/,/end/ {
+            /on_macos/,/^  end/ {
               if (/Hardware::CPU\.arm\?/) { in_arm=1; in_amd=0 }
               if (/else/ && in_arm) { in_arm=0; in_amd=1 }
               if (/sha256/ && in_arm) { sub(/sha256 ".*"/, "sha256 \"" arm64 "\"") }
@@ -59,7 +62,7 @@ jobs:
           ' "$FORMULA" > "${FORMULA}.tmp" && mv "${FORMULA}.tmp" "$FORMULA"
           
           awk -v arm64="$LINUX_ARM64_SHA" -v amd64="$LINUX_AMD64_SHA" '
-            /on_linux/,/end/ {
+            /on_linux/,/^  end/ {
               if (/Hardware::CPU\.arm\?/) { in_arm=1; in_amd=0 }
               if (/else/ && in_arm) { in_arm=0; in_amd=1 }
               if (/sha256/ && in_arm) { sub(/sha256 ".*"/, "sha256 \"" arm64 "\"") }
@@ -69,11 +72,19 @@ jobs:
             { print }
           ' "$FORMULA" > "${FORMULA}.tmp" && mv "${FORMULA}.tmp" "$FORMULA"
           
+          echo "=== Updated Formula ==="
           cat "$FORMULA"
-          
-          # Audit the formula
+      
+      - name: Audit formula
+        run: |
           eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
-          brew tap ${{ github.repository }}
+          
+          # Link the tap manually
+          REPO_OWNER="${GITHUB_REPOSITORY%/*}"
+          REPO_NAME="${GITHUB_REPOSITORY#*/}"
+          mkdir -p "$(brew --repository)/Library/Taps/${REPO_OWNER}"
+          ln -s "${GITHUB_WORKSPACE}" "$(brew --repository)/Library/Taps/${REPO_OWNER}/homebrew-${REPO_NAME}"
+          
           brew audit --strict --online nettracex || true
       
       - name: Create Pull Request
@@ -86,5 +97,10 @@ jobs:
             Update nettracex to version ${{ github.event.inputs.version }}
             
             Release: https://github.com/nettracex/nettracex-tui/releases/tag/${{ github.event.inputs.tag }}
+            
+            ## Changes
+            - Updated version to `${{ github.event.inputs.version }}`
+            - Updated all binary URLs to release tag `${{ github.event.inputs.tag }}`
+            - Updated SHA256 checksums for all platforms
           branch: update-nettracex-${{ github.event.inputs.version }}
           delete-branch: true
