@@ -1,91 +1,90 @@
-name: brew pr-pull
+name: Update Formula
 on:
-  pull_request_target:
-    types:
-      - labeled
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to update to (e.g., 0.1.1)'
+        required: true
+      tag:
+        description: 'GitHub release tag (e.g., v0.1.1)'
+        required: true
 jobs:
-  pr-pull-linux:
-    if: contains(github.event.pull_request.labels.*.name, 'pr-pull')
+  update:
     runs-on: ubuntu-22.04
-    permissions:
-      actions: read
-      checks: read
-      contents: write
-      issues: read
-      pull-requests: write
     steps:
-      - name: Set up Homebrew
-        uses: Homebrew/actions/setup-homebrew@main
+      - name: Checkout tap
+        uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
       
-      - name: Set up git
-        uses: Homebrew/actions/git-user-config@main
-      
-      - name: Pull bottles
-        env:
-          HOMEBREW_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PULL_REQUEST: ${{ github.event.pull_request.number }}
-        run: |
-          eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
-          brew pr-pull --debug --tap="$GITHUB_REPOSITORY" "$PULL_REQUEST"
-      
-      - name: Push commits
-        uses: Homebrew/actions/git-try-push@main
-        with:
-          branch: main
-      
-      - name: Delete branch
-        if: github.event.pull_request.head.repo.fork == false
-        env:
-          BRANCH: ${{ github.event.pull_request.head.ref }}
-        run: |
-          eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
-          git push --delete origin "$BRANCH"
-  
-  pr-pull-macos:
-    if: contains(github.event.pull_request.labels.*.name, 'pr-pull')
-    runs-on: macos-latest
-    permissions:
-      actions: read
-      checks: read
-      contents: write
-      issues: read
-      pull-requests: write
-    steps:
       - name: Set up Homebrew
         uses: Homebrew/actions/setup-homebrew@main
+      
+      - name: Update formula
+        run: |
+          FORMULA="Formula/nettracex.rb"
+          VERSION="${{ github.event.inputs.version }}"
+          TAG="${{ github.event.inputs.tag }}"
+          
+          echo "Downloading and calculating SHA256 hashes..."
+          DARWIN_ARM64_SHA=$(curl -sL "https://github.com/nettracex/nettracex-tui/releases/download/${TAG}/nettracex-${TAG}-darwin-arm64" | sha256sum | cut -d' ' -f1)
+          DARWIN_AMD64_SHA=$(curl -sL "https://github.com/nettracex/nettracex-tui/releases/download/${TAG}/nettracex-${TAG}-darwin-amd64" | sha256sum | cut -d' ' -f1)
+          LINUX_ARM64_SHA=$(curl -sL "https://github.com/nettracex/nettracex-tui/releases/download/${TAG}/nettracex-${TAG}-linux-arm64" | sha256sum | cut -d' ' -f1)
+          LINUX_AMD64_SHA=$(curl -sL "https://github.com/nettracex/nettracex-tui/releases/download/${TAG}/nettracex-${TAG}-linux-amd64" | sha256sum | cut -d' ' -f1)
+          
+          echo "Darwin ARM64: ${DARWIN_ARM64_SHA}"
+          echo "Darwin AMD64: ${DARWIN_AMD64_SHA}"
+          echo "Linux ARM64: ${LINUX_ARM64_SHA}"
+          echo "Linux AMD64: ${LINUX_AMD64_SHA}"
+          
+          # Update version
+          sed -i "s/version \".*\"/version \"${VERSION}\"/" "$FORMULA"
+          
+          # Update URLs
+          sed -i "s|nettracex-v[0-9.]*-darwin-arm64|nettracex-${TAG}-darwin-arm64|" "$FORMULA"
+          sed -i "s|nettracex-v[0-9.]*-darwin-amd64|nettracex-${TAG}-darwin-amd64|" "$FORMULA"
+          sed -i "s|nettracex-v[0-9.]*-linux-arm64|nettracex-${TAG}-linux-arm64|" "$FORMULA"
+          sed -i "s|nettracex-v[0-9.]*-linux-amd64|nettracex-${TAG}-linux-amd64|" "$FORMULA"
+          
+          # Update SHA256 values using awk for more precise replacement
+          awk -v arm64="$DARWIN_ARM64_SHA" -v amd64="$DARWIN_AMD64_SHA" '
+            /on_macos/,/end/ {
+              if (/Hardware::CPU\.arm\?/) { in_arm=1; in_amd=0 }
+              if (/else/ && in_arm) { in_arm=0; in_amd=1 }
+              if (/sha256/ && in_arm) { sub(/sha256 ".*"/, "sha256 \"" arm64 "\"") }
+              if (/sha256/ && in_amd) { sub(/sha256 ".*"/, "sha256 \"" amd64 "\"") }
+              if (/^  end/) { in_arm=0; in_amd=0 }
+            }
+            { print }
+          ' "$FORMULA" > "${FORMULA}.tmp" && mv "${FORMULA}.tmp" "$FORMULA"
+          
+          awk -v arm64="$LINUX_ARM64_SHA" -v amd64="$LINUX_AMD64_SHA" '
+            /on_linux/,/end/ {
+              if (/Hardware::CPU\.arm\?/) { in_arm=1; in_amd=0 }
+              if (/else/ && in_arm) { in_arm=0; in_amd=1 }
+              if (/sha256/ && in_arm) { sub(/sha256 ".*"/, "sha256 \"" arm64 "\"") }
+              if (/sha256/ && in_amd) { sub(/sha256 ".*"/, "sha256 \"" amd64 "\"") }
+              if (/^  end/) { in_arm=0; in_amd=0 }
+            }
+            { print }
+          ' "$FORMULA" > "${FORMULA}.tmp" && mv "${FORMULA}.tmp" "$FORMULA"
+          
+          cat "$FORMULA"
+          
+          # Audit the formula
+          eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+          brew tap ${{ github.repository }}
+          brew audit --strict --online nettracex || true
+      
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v5
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-      
-      - name: Set up git
-        uses: Homebrew/actions/git-user-config@main
-      
-      - name: Pull bottles
-        env:
-          HOMEBREW_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PULL_REQUEST: ${{ github.event.pull_request.number }}
-        run: |
-          if [[ -f /opt/homebrew/bin/brew ]]; then
-            eval "$(/opt/homebrew/bin/brew shellenv)"
-          else
-            eval "$(/usr/local/bin/brew shellenv)"
-          fi
-          brew pr-pull --debug --tap="$GITHUB_REPOSITORY" "$PULL_REQUEST"
-      
-      - name: Push commits
-        uses: Homebrew/actions/git-try-push@main
-        with:
-          branch: main
-      
-      - name: Delete branch
-        if: github.event.pull_request.head.repo.fork == false
-        env:
-          BRANCH: ${{ github.event.pull_request.head.ref }}
-        run: |
-          if [[ -f /opt/homebrew/bin/brew ]]; then
-            eval "$(/opt/homebrew/bin/brew shellenv)"
-          else
-            eval "$(/usr/local/bin/brew shellenv)"
-          fi
-          git push --delete origin "$BRANCH"
+          commit-message: "nettracex ${{ github.event.inputs.version }}"
+          title: "nettracex ${{ github.event.inputs.version }}"
+          body: |
+            Update nettracex to version ${{ github.event.inputs.version }}
+            
+            Release: https://github.com/nettracex/nettracex-tui/releases/tag/${{ github.event.inputs.tag }}
+          branch: update-nettracex-${{ github.event.inputs.version }}
+          delete-branch: true
