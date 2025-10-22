@@ -3,15 +3,15 @@
 
 ## How do I install these formulae?
 
-`brew install nettracex/brew/<formula>`
+`brew install nettracex/brew/nettracex`
 
-Or `brew tap nettracex/brew` and then `brew install <formula>`.
+Or `brew tap nettracex/brew` and then `brew install nettracex`.
 
 Or, in a `brew bundle` `Brewfile`:
 
 ```ruby
 tap "nettracex/brew"
-brew "<formula>"
+brew "nettracex"
 ```
 
 ## Documentation
