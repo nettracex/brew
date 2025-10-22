@@ -15,10 +15,19 @@ jobs:
       - name: Checkout tap
         uses: actions/checkout@v4
       
-      - name: Set up Homebrew
-        uses: Homebrew/actions/setup-homebrew@main
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set up Homebrew (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          # Homebrew is pre-installed on macOS runners
+          brew update
+      
+      - name: Set up Homebrew (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          # Install Homebrew on Linux
+          NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+          echo "/home/linuxbrew/.linuxbrew/bin" >> $GITHUB_PATH
+          eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
       
       - name: Tap this repository
         run: |
@@ -26,6 +35,7 @@ jobs:
           REPO_NAME="${GITHUB_REPOSITORY#*/}"
           REPO_OWNER="${GITHUB_REPOSITORY%/*}"
           
+          # Create tap directory structure
           mkdir -p "$(brew --repository)/Library/Taps/${REPO_OWNER}"
           ln -s "${REPO_PATH}" "$(brew --repository)/Library/Taps/${REPO_OWNER}/homebrew-${REPO_NAME}"
       
