@@ -7,28 +7,30 @@ on:
 jobs:
   test:
     strategy:
+      fail-fast: false
       matrix:
         os: [ ubuntu-22.04, macos-15-intel, macos-26 ]
     runs-on: ${{ matrix.os }}
     steps:
+      - name: Checkout tap
+        uses: actions/checkout@v4
+      
       - name: Set up Homebrew
         uses: Homebrew/actions/setup-homebrew@main
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
       
-      - name: Tap repository
-        run: brew tap ${{ github.repository }}
-      
-      - name: Install formula
-        run: brew install nettracex
-      
-      - name: Test formula
-        run: brew test nettracex
-      
-      - name: Audit formula
-        run: brew audit --strict --online nettracex
-      
-      - name: Test binary execution
+      - name: Tap this repository
         run: |
-          nettracex --version || true
-          nettracex --help || true
+          REPO_PATH="${GITHUB_WORKSPACE}"
+          REPO_NAME="${GITHUB_REPOSITORY#*/}"
+          REPO_OWNER="${GITHUB_REPOSITORY%/*}"
+          
+          mkdir -p "$(brew --repository)/Library/Taps/${REPO_OWNER}"
+          ln -s "${REPO_PATH}" "$(brew --repository)/Library/Taps/${REPO_OWNER}/homebrew-${REPO_NAME}"
+      
+      - name: Install and test formula
+        run: |
+          brew install nettracex
+          brew test nettracex
+          brew audit --strict nettracex
