@@ -1,8 +1,8 @@
 class Nettracex < Formula
   desc "A comprehensive network diagnostic toolkit built with Go, featuring a beautiful terminal user interface"
   homepage "https://nettracex.net"
-  url "https://github.com/nettracex/nettracex-tui/archive/refs/tags/cross-platform.tar.gz"
-  sha256 "4af20a36a08896104c4b8c2bf18529d459386446a0e995ec2e8fd315f1d69ed4"
+  url "https://github.com/nettracex/nettracex-tui/archive/refs/tags/v0.1.0.tar.gz"
+  sha256 "85595b8300f6dd4072bafa267ca5d718e36e8c5b74f296fc51154b324336b478"
   license "MIT"
   head "https://github.com/nettracex/nettracex-tui.git", branch: "main"
 
